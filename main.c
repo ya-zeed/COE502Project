@@ -1,8 +1,9 @@
-#include <cstdio>
 #include <arm_neon.h>
 #include "neon_mathfun.h"
-#include <iostream>
-#include <random>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
+#include <stdio.h>
 
 
 #define inv_sqrt_2xPI 0.39894228040143270286
@@ -104,29 +105,21 @@ blackScholes(float32x4_t vSptPrice, float32x4_t vStrike,
     return vOptionPrice;
 }
 
-void generateBlackScholesCases(float spotPriceArr[], float strikeArr[], float rateArr[],
-                               float volatilityArr[], float timeArr[], int typeArr[], int size) {
-    std::random_device rd; // Obtain a random number from hardware
-    std::mt19937 gen(rd()); // Seed the generator
 
-    // Define distributions for each parameter
-    std::uniform_real_distribution<float> spotPriceDist(30.0, 150.0);
-    std::uniform_real_distribution<float> strikePriceDist(30.0, 150.0);
-    std::uniform_real_distribution<float> rateDist(0.01, 0.1);
-    std::uniform_real_distribution<float> volatilityDist(0.1, 0.5);
-    std::uniform_real_distribution<float> timeDist(0.1, 2.0);
-    std::uniform_int_distribution<int> typeDist(0, 1);
+void generateBlackScholesCases(float *spotPriceArr, float *strikeArr, float *rateArr,
+                               float *volatilityArr, float *timeArr, int *typeArr, int size) {
 
     // Generate data
     for (int i = 0; i < size; ++i) {
-        spotPriceArr[i] = spotPriceDist(gen);
-        strikeArr[i] = strikePriceDist(gen);
-        rateArr[i] = rateDist(gen);
-        volatilityArr[i] = volatilityDist(gen);
-        timeArr[i] = timeDist(gen);
-        typeArr[i] = typeDist(gen);
+        spotPriceArr[i] = 30.0f + (float)rand() / ((float)RAND_MAX / (150.0f - 30.0f));
+        strikeArr[i] = 30.0f + (float)rand() / ((float)RAND_MAX / (150.0f - 30.0f));
+        rateArr[i] = 0.01f + (float)rand() / ((float)RAND_MAX / (0.1f - 0.01f));
+        volatilityArr[i] = 0.1f + (float)rand() / ((float)RAND_MAX / (0.5f - 0.1f));
+        timeArr[i] = 0.1f + (float)rand() / ((float)RAND_MAX / (2.0f - 0.1f));
+        typeArr[i] = rand() % 2;
     }
 }
+
 
 float CNDFSISD(float InputX) {
     int sign;
@@ -254,10 +247,10 @@ float blackScholesSISD(float sptprice, float strike, float rate, float volatilit
     return OptionPrice;
 }
 
-int main(int argc, char *argv[]) {
+int main() {
 
     // Number of test cases
-    int dataSize = 65536;
+    int dataSize = 100000;
 
     float spotPriceArr[dataSize], strikeArr[dataSize], rateArr[dataSize];
     float volatilityArr[dataSize], timeArr[dataSize];
@@ -269,8 +262,10 @@ int main(int argc, char *argv[]) {
     float OptionPrice[dataSize];
     float OptionPriceSISD[dataSize];
 
-    auto start = std::chrono::high_resolution_clock::now();
+    clock_t start, end;
+    double cpu_time_used;
 
+    start = clock();
     for (int i = 0; i < dataSize; i += 4) {
         float32x4_t vSpotPrice = vld1q_f32(&spotPriceArr[i]);
         float32x4_t vStrike = vld1q_f32(&strikeArr[i]);
@@ -283,25 +278,19 @@ int main(int argc, char *argv[]) {
 
         vst1q_f32(&OptionPrice[i], oprice);
     }
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    printf("Time taken for SIMD %f seconds\n", cpu_time_used);
 
-    auto end = std::chrono::high_resolution_clock::now();
-
-    std::chrono::duration<double> diff = end - start;
-
-    std::cout << "Time taken using SIMD: " << diff.count() << " s\n";
-
-    start = std::chrono::high_resolution_clock::now();
-
+    start = clock();
     for (int i = 0; i < dataSize; i++) {
         OptionPriceSISD[i] = blackScholesSISD(spotPriceArr[i], strikeArr[i], rateArr[i], volatilityArr[i], timeArr[i],
                                               typeArr[i], 0);
     }
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    printf("Time taken for SISD %f seconds\n", cpu_time_used);
 
-    end = std::chrono::high_resolution_clock::now();
-
-    diff = end - start;
-
-    std::cout << "Time taken using SISD: " << diff.count() << " s\n";
 
     return 0;
 }
